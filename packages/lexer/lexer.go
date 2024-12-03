@@ -1,8 +1,6 @@
 package lexer
 
 import (
-	"fmt"
-
 	"github.com/arifali123/152compiler/packages/token"
 )
 
@@ -54,8 +52,8 @@ func (l *Lexer) readChar() {
 		}
 	}
 
-	fmt.Printf("DEBUG readChar: char='%c', pos=%d, line=%d, col=%d, startOfLine=%v, lineLength=%d\n",
-		l.ch, l.position, l.line, l.column, l.startOfLine, l.lineLength)
+	// fmt.Printf("DEBUG readChar: char='%c', pos=%d, line=%d, col=%d, startOfLine=%v, lineLength=%d\n",
+	// 	l.ch, l.position, l.line, l.column, l.startOfLine, l.lineLength)
 }
 
 func (l *Lexer) processToken() token.Token {
@@ -63,16 +61,16 @@ func (l *Lexer) processToken() token.Token {
 	startColumn := l.column
 
 	if isLetter(l.ch) {
-		fmt.Printf("DEBUG processToken: Found letter '%c' at position %d\n", l.ch, l.position)
+		// fmt.Printf("DEBUG processToken: Found letter '%c' at position %d\n", l.ch, l.position)
 		startPos := l.position
 		l.readChar()
 		for isLetter(l.ch) || isDigit(l.ch) {
-			fmt.Printf("DEBUG processToken: Reading next char '%c' at position %d\n", l.ch, l.position)
+			// fmt.Printf("DEBUG processToken: Reading next char '%c' at position %d\n", l.ch, l.position)
 			l.readChar()
 		}
 		literal := l.input[startPos:l.position]
 		tokenType := token.LookupIdent(literal)
-		fmt.Printf("DEBUG processToken: Formed identifier '%s' with type %s\n", literal, tokenType)
+		// fmt.Printf("DEBUG processToken: Formed identifier '%s' with type %s\n", literal, tokenType)
 		return token.Token{
 			Type:    tokenType,
 			Literal: literal,
@@ -119,8 +117,8 @@ func (l *Lexer) processToken() token.Token {
 }
 
 func (l *Lexer) NextToken() token.Token {
-	fmt.Printf("\nDEBUG NextToken: BEFORE: line=%d, col=%d, char='%c', startOfLine=%v, lineLength=%d\n",
-		l.line, l.column, l.ch, l.startOfLine, l.lineLength)
+	// fmt.Printf("\nDEBUG NextToken: BEFORE: line=%d, col=%d, char='%c', startOfLine=%v, lineLength=%d\n",
+	// 	l.line, l.column, l.ch, l.startOfLine, l.lineLength)
 
 	// Handle start of new line
 	if l.startOfLine {
@@ -189,7 +187,7 @@ func (l *Lexer) NextToken() token.Token {
 	l.skipWhitespace()
 
 	if l.ch == 0 {
-		fmt.Printf("DEBUG NextToken: EOF detected\n")
+		// fmt.Printf("DEBUG NextToken: EOF detected\n")
 		return token.Token{
 			Type:    token.EOF,
 			Literal: "",
@@ -200,8 +198,8 @@ func (l *Lexer) NextToken() token.Token {
 
 	// Now we can check if we have a newline or actual content
 	if l.ch == '\n' {
-		fmt.Printf("DEBUG Newline: Found newline char at line=%d, col=%d, startOfLine=%v\n",
-			l.line, l.column, l.startOfLine)
+		// fmt.Printf("DEBUG Newline: Found newline char at line=%d, col=%d, startOfLine=%v\n",
+		// 	l.line, l.column, l.startOfLine)
 
 		// For newlines, use the line length as the column
 		tok := token.Token{
@@ -214,15 +212,15 @@ func (l *Lexer) NextToken() token.Token {
 		l.line++
 		l.startOfLine = true
 		l.lineLength = 0 // Reset line length for new line
-		fmt.Printf("DEBUG Newline: Created token at line=%d, col=%d, next line will be %d\n",
-			tok.Line, tok.Column, l.line)
+		// fmt.Printf("DEBUG Newline: Created token at line=%d, col=%d, next line will be %d\n",
+		// 	tok.Line, tok.Column, l.line)
 		return tok
 	}
 
 	// If we get here, we have actual content
 	tok := l.processToken()
-	fmt.Printf("DEBUG NextToken: Generated token: Type=%s, Literal='%s', Line=%d, Col=%d\n",
-		tok.Type, tok.Literal, tok.Line, tok.Column)
+	// fmt.Printf("DEBUG NextToken: Generated token: Type=%s, Literal='%s', Line=%d, Col=%d\n",
+	// 	tok.Type, tok.Literal, tok.Line, tok.Column)
 
 	if tok.Type == token.COLON {
 		l.expectIndent = true
