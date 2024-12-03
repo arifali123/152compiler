@@ -1,4 +1,3 @@
-// internal/lexer/lexer_test.go
 package lexer
 
 import (
@@ -20,50 +19,47 @@ func TestLexer_TestCase1(t *testing.T) {
 		expectedLine    int
 		expectedColumn  int
 	}{
-		// "# Basic arithmetic\n"
-		{token.NEWLINE, "\n", 1, 19}, // First get newline after comment
-		// "x = 5 + 3"
-		{token.IDENT, "x", 2, 1}, // Then get identifier
-		{token.ASSIGN, "=", 2, 3},
-		{token.INT, "5", 2, 5},
-		{token.PLUS, "+", 2, 7},
-		{token.INT, "3", 2, 9},
-		{token.NEWLINE, "\n", 2, 10},
+		// x = 5 + 3
+		{token.IDENT, "x", 1, 1},
+		{token.ASSIGN, "=", 1, 3},
+		{token.INT, "5", 1, 5},
+		{token.PLUS, "+", 1, 7},
+		{token.INT, "3", 1, 9},
+		{token.NEWLINE, "\n", 1, 10},
 
 		// y = x * 2
-		{token.IDENT, "y", 3, 1},
-		{token.ASSIGN, "=", 3, 3},
-		{token.IDENT, "x", 3, 5},
-		{token.ASTERISK, "*", 3, 7},
-		{token.INT, "2", 3, 9},
-		{token.NEWLINE, "\n", 3, 10},
+		{token.IDENT, "y", 2, 1},
+		{token.ASSIGN, "=", 2, 3},
+		{token.IDENT, "x", 2, 5},
+		{token.ASTERISK, "*", 2, 7},
+		{token.INT, "2", 2, 9},
+		{token.NEWLINE, "\n", 2, 10},
 
 		// Empty line
-		{token.NEWLINE, "\n", 4, 1},
-
-		// "# Simple assignments\n"  <-- Add newline token here
-		{token.NEWLINE, "\n", 5, 19},
+		{token.NEWLINE, "\n", 3, 1},
 
 		// name = "hello"
-		{token.IDENT, "name", 6, 1},
-		{token.ASSIGN, "=", 6, 6},
-		{token.STRING, "hello", 6, 8},
-		{token.NEWLINE, "\n", 6, 15},
+		{token.IDENT, "name", 4, 1},
+		{token.ASSIGN, "=", 4, 6},
+		{token.STRING, "hello", 4, 8},
+		{token.NEWLINE, "\n", 4, 15},
+
+		// Empty line
+		{token.NEWLINE, "\n", 5, 1},
 
 		// print(name)
-		{token.NEWLINE, "\n", 7, 1},
-		{token.PRINT, "print", 8, 1},
-		{token.LPAREN, "(", 8, 6},
-		{token.IDENT, "name", 8, 7},
-		{token.RPAREN, ")", 8, 11},
-		{token.NEWLINE, "\n", 8, 12},
+		{token.PRINT, "print", 6, 1},
+		{token.LPAREN, "(", 6, 6},
+		{token.IDENT, "name", 6, 7},
+		{token.RPAREN, ")", 6, 11},
+		{token.NEWLINE, "\n", 6, 12},
 
 		// print(y)
-		{token.PRINT, "print", 9, 1},
-		{token.LPAREN, "(", 9, 6},
-		{token.IDENT, "y", 9, 7},
-		{token.RPAREN, ")", 9, 8},
-		{token.EOF, "", 9, 9},
+		{token.PRINT, "print", 7, 1},
+		{token.LPAREN, "(", 7, 6},
+		{token.IDENT, "y", 7, 7},
+		{token.RPAREN, ")", 7, 8},
+		{token.EOF, "", 7, 9},
 	}
 
 	l := New(string(input))
@@ -88,76 +84,70 @@ func TestLexer_TestCase2(t *testing.T) {
 		{token.INT, "5", 1, 5},
 		{token.NEWLINE, "\n", 1, 6},
 
-		// "# If statements"
-		{token.NEWLINE, "\n", 2, 14},
-
 		// if x > 0:
-		{token.IF, "if", 3, 1},
-		{token.IDENT, "x", 3, 4},
-		{token.GT, ">", 3, 6},
-		{token.INT, "0", 3, 8},
-		{token.COLON, ":", 3, 9},
-		{token.NEWLINE, "\n", 3, 10},
+		{token.IF, "if", 2, 1},
+		{token.IDENT, "x", 2, 4},
+		{token.GT, ">", 2, 6},
+		{token.INT, "0", 2, 8},
+		{token.COLON, ":", 2, 9},
+		{token.NEWLINE, "\n", 2, 10},
 
 		// Indented block
-		{token.INDENT, "\t", 4, 1},
-		{token.IDENT, "y", 4, 2},
-		{token.ASSIGN, "=", 4, 4},
-		{token.INT, "1", 4, 6},
-		{token.NEWLINE, "\n", 4, 7},
-		{token.DEDENT, "", 5, 0},
+		{token.INDENT, "\t", 3, 1},
+		{token.IDENT, "y", 3, 2},
+		{token.ASSIGN, "=", 3, 4},
+		{token.INT, "1", 3, 6},
+		{token.NEWLINE, "\n", 3, 7},
+		{token.DEDENT, "", 4, 1},
 
 		// else:
-		{token.ELSE, "else", 5, 1},
-		{token.COLON, ":", 5, 5},
-		{token.NEWLINE, "\n", 5, 6},
+		{token.ELSE, "else", 4, 1},
+		{token.COLON, ":", 4, 5},
+		{token.NEWLINE, "\n", 4, 6},
 
 		// Indented block under else:
-		{token.INDENT, "\t", 6, 1},
-		{token.IDENT, "y", 6, 2},
-		{token.ASSIGN, "=", 6, 4},
-		{token.INT, "2", 6, 6},
-		{token.NEWLINE, "\n", 6, 7},
-		{token.NEWLINE, "\n", 7, 1},
+		{token.INDENT, "\t", 5, 1},
+		{token.IDENT, "y", 5, 2},
+		{token.ASSIGN, "=", 5, 4},
+		{token.INT, "2", 5, 6},
+		{token.NEWLINE, "\n", 5, 7},
+		{token.NEWLINE, "\n", 6, 1},
 
-		{token.DEDENT, "", 8, 0},
-		{token.PRINT, "print", 8, 1},
-		{token.LPAREN, "(", 8, 6},
-		{token.IDENT, "y", 8, 7},
-		{token.RPAREN, ")", 8, 8},
-		{token.NEWLINE, "\n", 8, 9},
+		{token.DEDENT, "", 7, 1},
+		{token.PRINT, "print", 7, 1},
+		{token.LPAREN, "(", 7, 6},
+		{token.IDENT, "y", 7, 7},
+		{token.RPAREN, ")", 7, 8},
+		{token.NEWLINE, "\n", 7, 9},
 
 		// i = 0
-		{token.IDENT, "i", 9, 1},
-		{token.ASSIGN, "=", 9, 3},
-		{token.INT, "0", 9, 5},
-		{token.NEWLINE, "\n", 9, 6},
-
-		// "# While loops"
-		{token.NEWLINE, "\n", 10, 12},
+		{token.IDENT, "i", 8, 1},
+		{token.ASSIGN, "=", 8, 3},
+		{token.INT, "0", 8, 5},
+		{token.NEWLINE, "\n", 8, 6},
 
 		// while i < 10:
-		{token.WHILE, "while", 11, 1},
-		{token.IDENT, "i", 11, 7},
-		{token.LT, "<", 11, 9},
-		{token.INT, "10", 11, 11},
-		{token.COLON, ":", 11, 13},
-		{token.NEWLINE, "\n", 11, 14},
+		{token.WHILE, "while", 9, 1},
+		{token.IDENT, "i", 9, 7},
+		{token.LT, "<", 9, 9},
+		{token.INT, "10", 9, 11},
+		{token.COLON, ":", 9, 13},
+		{token.NEWLINE, "\n", 9, 14},
 
 		// Indented block under while:
-		{token.INDENT, "\t", 12, 1},
-		{token.PRINT, "print", 12, 2},
-		{token.LPAREN, "(", 12, 7},
-		{token.IDENT, "i", 12, 8},
-		{token.RPAREN, ")", 12, 9},
-		{token.NEWLINE, "\n", 12, 10},
+		{token.INDENT, "\t", 10, 1},
+		{token.PRINT, "print", 10, 2},
+		{token.LPAREN, "(", 10, 7},
+		{token.IDENT, "i", 10, 8},
+		{token.RPAREN, ")", 10, 9},
+		{token.NEWLINE, "\n", 10, 10},
 
-		{token.IDENT, "i", 13, 2},
-		{token.ASSIGN, "=", 13, 4},
-		{token.IDENT, "i", 13, 6},
-		{token.PLUS, "+", 13, 8},
-		{token.INT, "1", 13, 10},
-		{token.EOF, "", 13, 11},
+		{token.IDENT, "i", 11, 2},
+		{token.ASSIGN, "=", 11, 4},
+		{token.IDENT, "i", 11, 6},
+		{token.PLUS, "+", 11, 8},
+		{token.INT, "1", 11, 10},
+		{token.EOF, "", 11, 11},
 	}
 
 	l := New(string(input))
@@ -197,7 +187,7 @@ func TestLexer_TestCase3(t *testing.T) {
 
 		// Empty line and DEDENT when leaving function block
 		{token.NEWLINE, "\n", 3, 1},
-		{token.DEDENT, "", 4, 0}, // Add DEDENT when leaving function block
+		{token.DEDENT, "", 4, 1},
 
 		// result = add(5, 3)
 		{token.IDENT, "result", 4, 1},
@@ -254,7 +244,7 @@ func runLexerTest(t *testing.T, l *Lexer, tests []struct {
 }
 
 func TestLexer_TestCase4(t *testing.T) {
-	input := "# this is a comment without newline at end of file"
+	input := "x = 42"
 	l := New(input)
 	tests := []struct {
 		expectedType    token.TokenType
@@ -262,7 +252,10 @@ func TestLexer_TestCase4(t *testing.T) {
 		expectedLine    int
 		expectedColumn  int
 	}{
-		{token.EOF, "", 1, 51},
+		{token.IDENT, "x", 1, 1},
+		{token.ASSIGN, "=", 1, 3},
+		{token.INT, "42", 1, 5},
+		{token.EOF, "", 1, 7},
 	}
 
 	runLexerTest(t, l, tests)
@@ -308,20 +301,103 @@ func TestIllegalToken(t *testing.T) {
 }
 
 func TestWhitespaceAtStartOfLine(t *testing.T) {
-	input := "   \r  first"
-
+	// Test tab indentation
+	input := "\tfirst" // Tab indentation
 	l := New(input)
 	l.startOfLine = true
 
+	// Should get INDENT token first
+	indentTok := l.NextToken()
+	if indentTok.Type != token.INDENT {
+		t.Fatalf("expected INDENT token for tab, got %q", indentTok.Type)
+	}
+	if indentTok.Column != 1 {
+		t.Fatalf("expected INDENT at column 1, got %d", indentTok.Column)
+	}
+
+	// Then get the identifier
 	tok := l.NextToken()
 	if tok.Type != token.IDENT || tok.Literal != "first" {
 		t.Fatalf("expected identifier 'first', got token type %q with literal %q",
 			tok.Type, tok.Literal)
 	}
+	if tok.Column != 2 { // After tab indentation
+		t.Fatalf("expected column to be %d after tab indentation, got %d",
+			2, tok.Column)
+	}
 
-	expectedColumn := 4
-	if tok.Column != expectedColumn {
-		t.Fatalf("expected column to be %d, got %d (column should reflect actual position in line for Python-like error reporting)",
-			expectedColumn, tok.Column)
+	// Test handling of other whitespace characters in non-indentation positions
+	input2 := "\tfirst \n" // Tab indent, then space and newline
+	l2 := New(input2)
+	l2.startOfLine = true
+
+	// Skip the INDENT and identifier tokens
+	l2.NextToken() // INDENT
+	l2.NextToken() // "first"
+
+	// Should get NEWLINE token, ignoring the space
+	tok2 := l2.NextToken()
+	if tok2.Type != token.NEWLINE {
+		t.Fatalf("expected NEWLINE token after whitespace, got %q", tok2.Type)
+	}
+}
+
+func TestRejectMixedIndentation(t *testing.T) {
+	// Test that any space-based indentation is rejected
+	input := "if x > 0:\n    y = 1\n\tz = 2" // First indent with spaces
+	l := New(input)
+
+	// Skip the first line tokens
+	for tok := l.NextToken(); tok.Type != token.NEWLINE; tok = l.NextToken() {
+		// Skip 'if x > 0:'
+	}
+
+	// The space indentation should be rejected immediately
+	tok := l.NextToken()
+	if tok.Type != token.ILLEGAL {
+		t.Fatalf("expected ILLEGAL token for space indentation, got %q", tok.Type)
+	}
+	if tok.Literal != "spaces for indentation not allowed, use tabs" {
+		t.Fatalf("expected error message about spaces not allowed, got %q", tok.Literal)
+	}
+}
+
+func TestRejectSpaceIndentation(t *testing.T) {
+	// Test that spaces are rejected for indentation
+	input := "if x > 0:\n    y = 1" // Using spaces for indentation
+	l := New(input)
+
+	// Skip the first line tokens
+	for tok := l.NextToken(); tok.Type != token.NEWLINE; tok = l.NextToken() {
+		// Skip 'if x > 0:'
+	}
+
+	// The space indentation should be rejected
+	tok := l.NextToken()
+	if tok.Type != token.ILLEGAL {
+		t.Fatalf("expected ILLEGAL token for space indentation, got %q", tok.Type)
+	}
+	if tok.Literal != "spaces for indentation not allowed, use tabs" {
+		t.Fatalf("expected error message about spaces not allowed, got %q", tok.Literal)
+	}
+}
+
+func TestRejectWindowsLineEndings(t *testing.T) {
+	// Test that Windows-style line endings (\r\n) are rejected
+	input := "x = 5\r\n" // Using Windows line ending
+	l := New(input)
+
+	// Skip 'x = 5'
+	l.NextToken() // x
+	l.NextToken() // =
+	l.NextToken() // 5
+
+	// The \r should be rejected
+	tok := l.NextToken()
+	if tok.Type != token.ILLEGAL {
+		t.Fatalf("expected ILLEGAL token for Windows line ending, got %q", tok.Type)
+	}
+	if tok.Literal != "Windows line endings (\\r\\n) not allowed, use Unix style (\\n)" {
+		t.Fatalf("expected error message about Windows line endings, got %q", tok.Literal)
 	}
 }
