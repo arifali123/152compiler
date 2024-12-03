@@ -1,4 +1,3 @@
-// internal/token/token.go
 package token
 
 type TokenType string

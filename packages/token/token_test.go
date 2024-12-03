@@ -1,4 +1,3 @@
-// internal/token/token_test.go
 package token
 
 import "testing"
