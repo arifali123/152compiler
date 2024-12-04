@@ -110,3 +110,58 @@ func TestSymbolTable_AllStatementTypes(t *testing.T) {
 		}
 	})
 }
+
+func TestSymbolTable_GetSymbols(t *testing.T) {
+	symTable := NewSymbolTable(nil)
+
+	// Define various symbols
+	symTable.Define("x", IntegerType)
+	symTable.Define("y", StringType)
+	symTable.Define("myFunc", FunctionType)
+	symTable.NewTemp(IntegerType)
+
+	// Get all symbols
+	symbols := symTable.GetSymbols()
+
+	// We expect 5 symbols: x, y, myFunc, temp variable, and the built-in print function
+	expectedCount := 5
+	if len(symbols) != expectedCount {
+		t.Errorf("Expected %d symbols, got %d", expectedCount, len(symbols))
+	}
+
+	// Create a map to check for expected symbols
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym.Name] = true
+	}
+
+	// Check for specific symbols
+	expectedSymbols := []string{"x", "y", "myFunc", "print", "_t1"}
+	for _, name := range expectedSymbols {
+		if !symbolMap[name] {
+			t.Errorf("Expected symbol %s not found in symbol table", name)
+		}
+	}
+
+	// Verify types of specific symbols
+	for _, sym := range symbols {
+		switch sym.Name {
+		case "x":
+			if sym.Type != IntegerType {
+				t.Errorf("Expected x to be IntegerType, got %v", sym.Type)
+			}
+		case "y":
+			if sym.Type != StringType {
+				t.Errorf("Expected y to be StringType, got %v", sym.Type)
+			}
+		case "myFunc":
+			if sym.Type != FunctionType {
+				t.Errorf("Expected myFunc to be FunctionType, got %v", sym.Type)
+			}
+		case "print":
+			if !sym.IsPrint {
+				t.Error("Expected print to have IsPrint flag set")
+			}
+		}
+	}
+}
