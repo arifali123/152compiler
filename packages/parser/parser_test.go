@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
@@ -83,7 +84,7 @@ func TestParser_TestCase2(t *testing.T) {
 				program.Statements[1])
 		}
 
-		if !testInfixExpression(t, ifStmt.Condition, "x", ">", "0") {
+		if !testInfixExpression(t, ifStmt.Condition, "x", ">", 0) {
 			return
 		}
 
@@ -106,7 +107,7 @@ func TestParser_TestCase2(t *testing.T) {
 				program.Statements[4])
 		}
 
-		if !testInfixExpression(t, whileStmt.Condition, "i", "<", "10") {
+		if !testInfixExpression(t, whileStmt.Condition, "i", "<", 10) {
 			return
 		}
 
@@ -186,6 +187,170 @@ func TestParser_TestCase3(t *testing.T) {
 	})
 }
 
+func TestParser_ReturnStatement(t *testing.T) {
+	input := `return x + y`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("program has wrong number of statements. expected=1, got=%d",
+			len(program.Statements))
+	}
+
+	returnStmt, ok := program.Statements[0].(*ast.ReturnStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not ast.ReturnStatement. got=%T",
+			program.Statements[0])
+	}
+
+	if !testInfixExpression(t, returnStmt.Value, "x", "+", "y") {
+		return
+	}
+}
+
+func TestParser_PrintExpression(t *testing.T) {
+	input := `print(x + y)`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("program has wrong number of statements. expected=1, got=%d",
+			len(program.Statements))
+	}
+
+	printStmt, ok := program.Statements[0].(*ast.PrintStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not ast.PrintStatement. got=%T",
+			program.Statements[0])
+	}
+
+	if !testInfixExpression(t, printStmt.Value, "x", "+", "y") {
+		return
+	}
+}
+
+func TestParser_ErrorCases(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedError string
+	}{
+		{
+			"x = (2 + ",
+			"'(' was never closed",
+		},
+		{
+			"print(",
+			"'(' was never closed",
+		},
+		{
+			"if x > ",
+			"'(' was never closed",
+		},
+		{
+			"def foo(x,",
+			"Expected parameter name",
+		},
+		{
+			"def foo(x:",
+			"Expected parameter name",
+		},
+		{
+			"x = 5 +",
+			"'(' was never closed",
+		},
+		{
+			"x = * 5",
+			"Unexpected token * (*)",
+		},
+	}
+
+	for i, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+
+		// We expect exactly one error
+		if len(p.errors) != 1 {
+			t.Errorf("test[%d] - wrong number of parser errors. expected=1, got=%d",
+				i, len(p.errors))
+			continue
+		}
+
+		// Check error message
+		if p.errors[0] != fmt.Sprintf("line 1: %s", tt.expectedError) {
+			t.Errorf("test[%d] - wrong error message. expected=%q, got=%q",
+				i, fmt.Sprintf("line 1: %s", tt.expectedError), p.errors[0])
+		}
+
+		// We expect no statements when there's an error
+		if len(program.Statements) != 0 {
+			t.Errorf("test[%d] - expected no statements after error, got %d",
+				i, len(program.Statements))
+		}
+	}
+}
+
+func TestParser_PrintExpressionErrors(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedError string
+	}{
+		{
+			"print x",
+			"Expected '(' after print",
+		},
+		{
+			"print(x",
+			"Expected ')' after expression",
+		},
+		{
+			"print)",
+			"Expected '(' after print",
+		},
+		{
+			"print()",
+			"Unexpected token ) ())",
+		},
+		{
+			"print(",
+			"'(' was never closed",
+		},
+		{
+			"print x)",
+			"Expected '(' after print",
+		},
+	}
+
+	for i, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+
+		// We expect exactly one error
+		if len(p.errors) != 1 {
+			t.Errorf("test[%d] - wrong number of parser errors. expected=1, got=%d",
+				i, len(p.errors))
+			continue
+		}
+
+		// Check error message
+		if p.errors[0] != fmt.Sprintf("line 1: %s", tt.expectedError) {
+			t.Errorf("test[%d] - wrong error message. expected=%q, got=%q",
+				i, fmt.Sprintf("line 1: %s", tt.expectedError), p.errors[0])
+		}
+
+		// We expect no statements when there's an error
+		if len(program.Statements) != 0 {
+			t.Errorf("test[%d] - expected no statements after error, got %d",
+				i, len(program.Statements))
+		}
+	}
+}
+
 // Helper functions for testing
 func testStatement(t *testing.T, stmt ast.Statement, expected string) bool {
 	stmtStr := stmt.String() // You'll need to implement String() for AST nodes
@@ -197,7 +362,7 @@ func testStatement(t *testing.T, stmt ast.Statement, expected string) bool {
 	return true
 }
 
-func testInfixExpression(t *testing.T, exp ast.Expression, left, operator, right string) bool {
+func testInfixExpression(t *testing.T, exp ast.Expression, left interface{}, operator string, right interface{}) bool {
 	infixExp, ok := exp.(*ast.BinaryExpression)
 	if !ok {
 		t.Errorf("exp is not ast.BinaryExpression. got=%T", exp)
@@ -227,6 +392,11 @@ func testLiteralExpression(t *testing.T, exp ast.Expression, expected interface{
 	case int64:
 		return testIntegerLiteral(t, exp, v)
 	case string:
+		// If it's a number string, test as integer
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return testIntegerLiteral(t, exp, i)
+		}
+		// Otherwise test as identifier
 		return testIdentifier(t, exp, v)
 	}
 	t.Errorf("type of exp not handled. got=%T", exp)

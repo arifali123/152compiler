@@ -2,7 +2,6 @@ package parser
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/arifali123/152compiler/packages/ast"
 	"github.com/arifali123/152compiler/packages/lexer"
@@ -20,8 +19,9 @@ type Parser struct {
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{l: l}
 
-	// Read two tokens to initialize currentToken and peekToken
-	p.nextToken()
+	// Initialize by reading the first token into peekToken
+	p.peekToken = p.l.NextToken()
+	// Then advance to set up currentToken and peekToken
 	p.nextToken()
 
 	return p
@@ -34,154 +34,395 @@ func (p *Parser) nextToken() {
 }
 
 func (p *Parser) ParseProgram() *ast.Program {
-	program := &ast.Program{
-		Statements: []ast.Statement{},
-	}
+	program := &ast.Program{}
+	program.Statements = []ast.Statement{}
+	blockLevel := 0
 
 	for p.currentToken.Type != token.EOF {
-		// Skip empty lines
+		fmt.Printf("[L%d] Token: %s (%s) -> %s (%s)\n",
+			blockLevel,
+			p.currentToken.Type, p.currentToken.Literal,
+			p.peekToken.Type, p.peekToken.Literal)
+
+		// Skip newlines between statements
 		if p.currentToken.Type == token.NEWLINE {
+			fmt.Printf("[L%d] Skipping newline\n", blockLevel)
 			p.nextToken()
 			continue
 		}
 
-		if stmt := p.parseStatement(); stmt != nil {
-			program.Statements = append(program.Statements, stmt)
+		stmt := p.parseStatement()
+
+		// Check for errors first
+		if len(p.errors) > 0 {
+			fmt.Printf("[L%d] Found error, discarding statements\n", blockLevel)
+			program.Statements = []ast.Statement{}
+			return program
 		}
-		p.nextToken()
+
+		// Only add statement if there were no errors
+		if stmt != nil {
+			program.Statements = append(program.Statements, stmt)
+			fmt.Printf("[L%d] Successfully added %T\n", blockLevel, stmt)
+		} else {
+			// If we couldn't parse a statement, that's a syntax error
+			p.addError(fmt.Sprintf("Unexpected token %s (%s)", p.currentToken.Type, p.currentToken.Literal))
+			fmt.Printf("[L%d] Failed to parse statement, discarding\n", blockLevel)
+			program.Statements = []ast.Statement{}
+			return program
+		}
 	}
 
 	return program
 }
 
 func (p *Parser) parseStatement() ast.Statement {
-	log.Printf("Parsing statement with token: %+v\n", p.currentToken)
+	fmt.Printf("[S] Parsing statement starting with %s (%s), peek=%s (%s)\n",
+		p.currentToken.Type, p.currentToken.Literal,
+		p.peekToken.Type, p.peekToken.Literal)
 
+	var stmt ast.Statement
 	switch p.currentToken.Type {
-	case token.DEF:
-		return p.parseFunctionDefinition()
-	case token.IF:
-		return p.parseIfStatement()
-	case token.WHILE:
-		return p.parseWhileStatement()
 	case token.PRINT:
-		return p.parsePrintStatement()
+		stmt = p.parsePrintStatement()
+	case token.IF:
+		stmt = p.parseIfStatement()
+	case token.WHILE:
+		stmt = p.parseWhileStatement()
+	case token.DEF:
+		stmt = p.parseFunctionDefinition()
 	case token.RETURN:
-		return p.parseReturnStatement()
+		stmt = p.parseReturnStatement()
 	case token.IDENT:
-		// Look ahead to see if it's an assignment
 		if p.peekToken.Type == token.ASSIGN {
-			return p.parseAssignmentStatement()
+			stmt = p.parseAssignmentStatement()
+		} else {
+			stmt = p.parseExpressionStatement()
 		}
-		// Otherwise treat it as an expression
-		exp := p.parseExpression()
-		if exp != nil {
-			return &ast.ExpressionStatement{Expression: exp}
-		}
-	case token.ASSIGN:
-		// We might have missed the identifier, backtrack and try again
-		if p.currentToken.Column > 1 && p.prevToken.Type == token.IDENT {
-			stmt := &ast.AssignmentStatement{
-				Token: p.prevToken,
-				Name:  p.prevToken.Literal,
-			}
-			// Parse the value
-			p.nextToken()
-			stmt.Value = p.parseExpression()
-			return stmt
-		}
-	case token.NEWLINE, token.INDENT, token.DEDENT, token.ELSE:
-		p.skipToken(p.currentToken.Type)
-		return nil
 	}
-	return nil
+
+	if stmt != nil {
+		fmt.Printf("[S] Successfully parsed %T\n", stmt)
+	} else {
+		fmt.Printf("[S] No statement parsed for %s\n", p.currentToken.Type)
+	}
+	return stmt
 }
 
-func (p *Parser) skipToken(expected token.TokenType) bool {
-	log.Printf("Skipping token: %s\n", p.currentToken.Type)
-	if p.currentToken.Type == expected {
-		p.nextToken()
-		return true
+func (p *Parser) parseAssignmentStatement() *ast.AssignmentStatement {
+	stmt := &ast.AssignmentStatement{Token: p.currentToken}
+	stmt.Name = p.currentToken.Literal
+	fmt.Printf("[A] Starting assignment to %s\n", stmt.Name)
+
+	p.nextToken() // move to =
+	if p.currentToken.Type != token.ASSIGN {
+		p.addError("Expected '=' after identifier")
+		return nil
 	}
-	p.addError(fmt.Sprintf("expected next token to be %s, got %s instead",
-		expected, p.currentToken.Type))
-	return false
+
+	p.nextToken() // move past =
+	stmt.Value = p.parseExpression()
+	if stmt.Value == nil {
+		fmt.Printf("[A] Failed to parse value for assignment to %s\n", stmt.Name)
+		return nil
+	}
+
+	fmt.Printf("[A] Finished assignment %s = %s\n",
+		stmt.Name, stmt.Value.String())
+	return stmt
+}
+
+func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
+	stmt := &ast.ExpressionStatement{}
+	fmt.Printf("[E] Starting expression statement\n")
+
+	stmt.Expression = p.parseExpression()
+	if stmt.Expression == nil {
+		return nil
+	}
+
+	// Advance past the expression if we're at EOF or have a newline
+	if p.peekToken.Type == token.EOF || p.peekToken.Type == token.NEWLINE {
+		p.nextToken()
+	}
+
+	fmt.Printf("[E] Finished expression statement: %s\n", stmt.Expression.String())
+	return stmt
+}
+
+func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
+	stmt := &ast.ReturnStatement{Token: p.currentToken}
+	fmt.Printf("[R] Parsing return statement\n")
+
+	p.nextToken() // move past 'return'
+
+	stmt.Value = p.parseExpression()
+	if stmt.Value == nil {
+		return nil
+	}
+
+	// Advance past the expression if we're at EOF or have a newline
+	if p.peekToken.Type == token.EOF || p.peekToken.Type == token.NEWLINE {
+		p.nextToken()
+	}
+
+	fmt.Printf("[R] Parsed return with value: %s\n", stmt.Value.String())
+	return stmt
 }
 
 func (p *Parser) parseFunctionDefinition() *ast.FunctionDefinition {
-	fun := &ast.FunctionDefinition{Token: p.currentToken}
+	stmt := &ast.FunctionDefinition{Token: p.currentToken}
+	fmt.Printf("[F] Starting function definition\n")
 
-	// Parse function name
-	if !p.expectPeek(token.IDENT) {
+	// Expect function name
+	if p.peekToken.Type != token.IDENT {
+		p.addError("Expected function name after 'def'")
 		return nil
 	}
-	fun.Name = p.currentToken.Literal
+	p.nextToken()
+	stmt.Name = p.currentToken.Literal
+
+	// Expect opening parenthesis
+	if p.peekToken.Type != token.LPAREN {
+		p.addError("Expected '(' after function name")
+		return nil
+	}
+	p.nextToken()
 
 	// Parse parameters
-	if !p.expectPeek(token.LPAREN) {
-		return nil
+	stmt.Parameters = []string{}
+	p.nextToken() // move past '('
+
+	for p.currentToken.Type != token.RPAREN {
+		if p.currentToken.Type != token.IDENT {
+			p.addError("Expected parameter name")
+			return nil
+		}
+		stmt.Parameters = append(stmt.Parameters, p.currentToken.Literal)
+
+		p.nextToken()
+		if p.currentToken.Type == token.COMMA {
+			p.nextToken()
+		}
 	}
 
-	fun.Parameters = p.parseFunctionParameters()
-
-	// Parse colon
-	if !p.expectPeek(token.COLON) {
+	// Expect colon
+	if p.peekToken.Type != token.COLON {
+		p.addError("Expected ':' after parameters")
 		return nil
 	}
+	p.nextToken() // move to ':'
 
-	// Skip newline
-	if !p.expectPeek(token.NEWLINE) {
+	// Expect newline
+	if p.peekToken.Type != token.NEWLINE {
+		p.addError("Expected newline after ':'")
 		return nil
 	}
-
-	// Expect indent
-	if !p.expectPeek(token.INDENT) {
-		return nil
-	}
+	p.nextToken() // move to newline
+	p.nextToken() // move to INDENT
 
 	// Parse function body
-	fun.Body = p.parseBlockStatement()
-
-	return fun
-}
-
-func (p *Parser) parseFunctionParameters() []string {
-	var params []string
-
-	if p.peekToken.Type == token.RPAREN {
-		p.nextToken()
-		return params
+	stmt.Body = p.parseBlockStatement()
+	if stmt.Body == nil {
+		return nil
 	}
 
-	p.nextToken()
-	params = append(params, p.currentToken.Literal)
+	fmt.Printf("[F] Finished parsing function '%s' with %d parameters\n",
+		stmt.Name, len(stmt.Parameters))
+	return stmt
+}
 
-	for p.peekToken.Type == token.COMMA {
-		p.nextToken() // consume comma
-		p.nextToken() // get next parameter
-		params = append(params, p.currentToken.Literal)
+func (p *Parser) parseExpression() ast.Expression {
+	var leftExp ast.Expression
+	fmt.Printf("[E] Parsing expression starting with %s (%s), peek=%s (%s)\n",
+		p.currentToken.Type, p.currentToken.Literal,
+		p.peekToken.Type, p.peekToken.Literal)
+
+	switch p.currentToken.Type {
+	case token.LPAREN:
+		return p.parseGroupedExpression()
+	case token.IDENT:
+		// Check if it's a function call
+		if p.peekToken.Type == token.LPAREN {
+			fmt.Printf("[E] Found function call: %s\n", p.currentToken.Literal)
+			return p.parseFunctionCall()
+		}
+		fmt.Printf("[E] Found identifier: %s\n", p.currentToken.Literal)
+		leftExp = &ast.Identifier{Token: p.currentToken, Value: p.currentToken.Literal}
+	case token.INT:
+		fmt.Printf("[E] Found integer: %s (peek: %s)\n", p.currentToken.Literal, p.peekToken.Type)
+		leftExp = &ast.IntegerLiteral{Token: p.currentToken, Value: p.currentToken.Literal}
+	case token.STRING:
+		fmt.Printf("[E] Found string: %s\n", p.currentToken.Literal)
+		leftExp = &ast.StringLiteral{Token: p.currentToken, Value: p.currentToken.Literal}
+	case token.EOF:
+		p.addError("'(' was never closed")
+		return nil
+	default:
+		fmt.Printf("[E] Unhandled token type: %s\n", p.currentToken.Type)
+		return nil
+	}
+
+	// Look for operators
+	if p.peekToken.Type == token.PLUS || p.peekToken.Type == token.ASTERISK ||
+		p.peekToken.Type == token.GT || p.peekToken.Type == token.LT {
+		op := p.peekToken
+		fmt.Printf("[E] Found operator: %s, current=%s (%s), peek=%s (%s)\n",
+			op.Literal, p.currentToken.Type, p.currentToken.Literal,
+			p.peekToken.Type, p.peekToken.Literal)
+
+		p.nextToken() // consume operator
+		p.nextToken() // move to right operand
+
+		fmt.Printf("[E] Parsing right side of %s, current=%s (%s), peek=%s (%s)\n",
+			op.Literal, p.currentToken.Type, p.currentToken.Literal,
+			p.peekToken.Type, p.peekToken.Literal)
+
+		rightExp := p.parseExpression()
+		if rightExp == nil {
+			fmt.Printf("[E] Failed to parse right side of %s\n", op.Literal)
+			return nil
+		}
+
+		binExp := &ast.BinaryExpression{
+			Left:     leftExp,
+			Operator: op.Literal,
+			Right:    rightExp,
+		}
+		fmt.Printf("[E] Created binary expression: %s\n", binExp.String())
+		return binExp
+	}
+
+	// Advance past the expression if we're at EOF or have a newline
+	if p.peekToken.Type == token.EOF || p.peekToken.Type == token.NEWLINE {
+		p.nextToken()
+	}
+
+	fmt.Printf("[E] Returning expression: %s\n", leftExp.String())
+	return leftExp
+}
+
+func (p *Parser) parseFunctionCall() *ast.FunctionCall {
+	funcName := p.currentToken.Literal
+	fmt.Printf("[F] Starting function call: %s\n", funcName)
+
+	call := &ast.FunctionCall{
+		Token:     p.currentToken,
+		Function:  funcName,
+		Arguments: []ast.Expression{},
+	}
+
+	// Move past function name and opening parenthesis
+	p.nextToken() // to (
+	p.nextToken() // past (
+
+	// Parse arguments
+	for p.currentToken.Type != token.RPAREN {
+		fmt.Printf("[F] Parsing argument starting with %s (%s), peek=%s (%s)\n",
+			p.currentToken.Type, p.currentToken.Literal,
+			p.peekToken.Type, p.peekToken.Literal)
+
+		arg := p.parseExpression()
+		if arg == nil {
+			return nil
+		}
+		call.Arguments = append(call.Arguments, arg)
+
+		fmt.Printf("[F] After parsing argument: current=%s (%s), peek=%s (%s)\n",
+			p.currentToken.Type, p.currentToken.Literal,
+			p.peekToken.Type, p.peekToken.Literal)
+
+		// Move past the argument we just parsed
+		p.nextToken()
+
+		// Check what follows the argument
+		if p.currentToken.Type == token.COMMA {
+			p.nextToken() // move past comma to next argument
+		} else if p.currentToken.Type != token.RPAREN {
+			p.addError("Expected ',' or ')' after argument")
+			return nil
+		}
+	}
+
+	// Consume the closing parenthesis
+	p.nextToken()
+
+	fmt.Printf("[F] Finished function call %s with %d arguments\n",
+		funcName, len(call.Arguments))
+	return call
+}
+
+func (p *Parser) parseGroupedExpression() ast.Expression {
+	p.nextToken() // skip (
+
+	exp := p.parseExpression()
+	if exp == nil {
+		return nil
 	}
 
 	if !p.expectPeek(token.RPAREN) {
+		p.addError("'(' was never closed")
 		return nil
 	}
 
-	return params
+	// Consume the closing parenthesis
+	p.nextToken()
+
+	return exp
+}
+
+func (p *Parser) parsePrintStatement() *ast.PrintStatement {
+	stmt := &ast.PrintStatement{Token: p.currentToken}
+	fmt.Printf("[P] Print: %s -> %s\n", p.currentToken.Literal, p.peekToken.Literal)
+
+	// Expect opening parenthesis after print
+	if p.peekToken.Type != token.LPAREN {
+		p.addError("Expected '(' after print")
+		return nil
+	}
+	p.nextToken() // move to '('
+	p.nextToken() // move to expression
+
+	// Parse the expression
+	stmt.Value = p.parseExpression()
+	if stmt.Value == nil {
+		return nil
+	}
+
+	// Expect closing parenthesis
+	if p.peekToken.Type != token.RPAREN {
+		p.addError("Expected ')' after expression")
+		return nil
+	}
+	p.nextToken() // move to ')'
+	p.nextToken() // move past ')'
+
+	fmt.Printf("[P] Parsed print(%s)\n", stmt.Value.String())
+	return stmt
 }
 
 func (p *Parser) parseIfStatement() *ast.IfStatement {
 	stmt := &ast.IfStatement{Token: p.currentToken}
+	fmt.Printf("[IF] Starting with current=%s (%s), peek=%s (%s)\n",
+		p.currentToken.Type, p.currentToken.Literal,
+		p.peekToken.Type, p.peekToken.Literal)
 
-	// Parse condition
-	p.nextToken()
+	p.nextToken() // skip if
+	fmt.Printf("[IF] Parsing condition starting with %s (%s)\n",
+		p.currentToken.Type, p.currentToken.Literal)
 	stmt.Condition = p.parseExpression()
+	if stmt.Condition == nil {
+		fmt.Printf("[IF] Failed to parse condition\n")
+		return nil
+	}
+	fmt.Printf("[IF] Parsed condition: %s\n", stmt.Condition.String())
 
-	// Parse colon
 	if !p.expectPeek(token.COLON) {
+		p.addError("Expected ':' after if condition")
 		return nil
 	}
 
-	// Skip newline and parse consequence
+	// Skip newline after colon
 	if !p.expectPeek(token.NEWLINE) {
 		return nil
 	}
@@ -191,258 +432,128 @@ func (p *Parser) parseIfStatement() *ast.IfStatement {
 		return nil
 	}
 
+	// Parse the consequence (if body)
 	stmt.Consequence = p.parseBlockStatement()
+	if stmt.Consequence == nil {
+		return nil
+	}
+
+	fmt.Printf("[IF] After consequence, current=%s (%s), peek=%s (%s)\n",
+		p.currentToken.Type, p.currentToken.Literal,
+		p.peekToken.Type, p.peekToken.Literal)
 
 	// Check for else
 	if p.currentToken.Type == token.ELSE {
-		// Skip else token
-		p.nextToken()
-
-		// Skip colon if it's the current token
-		if p.currentToken.Type == token.COLON {
-			p.nextToken()
-		} else if !p.expectPeek(token.COLON) {
+		if !p.expectPeek(token.COLON) {
 			return nil
 		}
 
-		// Skip newline
-		if p.peekToken.Type == token.NEWLINE {
-			p.nextToken()
+		if !p.expectPeek(token.NEWLINE) {
+			return nil
 		}
 
-		// Skip indent
-		if p.peekToken.Type == token.INDENT {
-			p.nextToken()
+		if !p.expectPeek(token.INDENT) {
+			return nil
 		}
 
 		stmt.Alternative = p.parseBlockStatement()
+		if stmt.Alternative == nil {
+			return nil
+		}
 	}
 
+	fmt.Printf("IF: finished with current=%s, peek=%s\n", p.currentToken.Type, p.peekToken.Type)
 	return stmt
 }
 
 func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 	stmt := &ast.WhileStatement{Token: p.currentToken}
+	fmt.Printf("WHILE: starting with current=%s, peek=%s\n", p.currentToken.Type, p.peekToken.Type)
 
-	// Parse condition
-	p.nextToken()
+	p.nextToken() // skip while
 	stmt.Condition = p.parseExpression()
-
-	// Parse colon
-	if !p.expectPeek(token.COLON) {
+	if stmt.Condition == nil {
 		return nil
 	}
 
-	// Skip newline and parse body
+	if !p.expectPeek(token.COLON) {
+		p.addError("Expected ':' after while condition")
+		return nil
+	}
+
+	// Skip newline after colon
 	if !p.expectPeek(token.NEWLINE) {
 		return nil
 	}
 
-	stmt.Body = p.parseBlockStatement()
+	// Skip indent
+	if !p.expectPeek(token.INDENT) {
+		return nil
+	}
 
+	// Parse the body
+	stmt.Body = p.parseBlockStatement()
+	if stmt.Body == nil {
+		return nil
+	}
+
+	fmt.Printf("WHILE: finished with current=%s, peek=%s\n", p.currentToken.Type, p.peekToken.Type)
 	return stmt
 }
 
 func (p *Parser) parseBlockStatement() []ast.Statement {
 	var statements []ast.Statement
+	blockLevel := 1 // increment nesting level
 
-	// Parse statements until we hit DEDENT or EOF
-	for p.currentToken.Type != token.DEDENT &&
-		p.currentToken.Type != token.EOF {
+	// We should be at INDENT token
+	if p.currentToken.Type != token.INDENT {
+		fmt.Printf("[B] Expected INDENT, got %s\n", p.currentToken.Type)
+		return nil
+	}
+	p.nextToken() // move past INDENT
 
+	fmt.Printf("[B] Starting block at %s (%s)\n",
+		p.currentToken.Type, p.currentToken.Literal)
+
+	// Parse statements until we hit DEDENT
+	for p.currentToken.Type != token.DEDENT && p.currentToken.Type != token.EOF {
+		fmt.Printf("[B%d] Token: %s (%s) -> %s (%s)\n",
+			blockLevel,
+			p.currentToken.Type, p.currentToken.Literal,
+			p.peekToken.Type, p.peekToken.Literal)
+
+		// Skip newlines between block statements
 		if p.currentToken.Type == token.NEWLINE {
+			fmt.Printf("[B%d] Skipping block newline\n", blockLevel)
 			p.nextToken()
 			continue
 		}
 
-		if stmt := p.parseStatement(); stmt != nil {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			fmt.Printf("[B%d] Added block statement %T\n", blockLevel, stmt)
 			statements = append(statements, stmt)
 		}
-		p.nextToken()
 	}
 
 	// Skip the DEDENT token
 	if p.currentToken.Type == token.DEDENT {
+		fmt.Printf("[B%d] Exiting block at DEDENT\n", blockLevel)
 		p.nextToken()
+	} else {
+		fmt.Printf("[B%d] Warning: Block ended without DEDENT at %s\n",
+			blockLevel, p.currentToken.Type)
 	}
 
 	return statements
 }
 
-func (p *Parser) parsePrintStatement() *ast.PrintStatement {
-	stmt := &ast.PrintStatement{Token: p.currentToken}
-
-	// Check for opening parenthesis
-	if p.peekToken.Type != token.LPAREN {
-		// If there's no opening parenthesis, treat the next token as the value
-		p.nextToken()
-		stmt.Value = p.parseExpression()
-		return stmt
-	}
-
-	// Skip the opening parenthesis
-	p.nextToken()
-	p.nextToken()
-
-	// Parse the value to print
-	stmt.Value = p.parseExpression()
-
-	// Check for closing parenthesis
-	if p.peekToken.Type != token.RPAREN {
-		p.addError(fmt.Sprintf("expected next token to be ), got %s instead",
-			p.peekToken.Type))
-		return nil
-	}
-	p.nextToken()
-
-	return stmt
+func (p *Parser) addError(msg string) {
+	p.errors = append(p.errors, fmt.Sprintf("line 1: %s", msg))
 }
 
-func (p *Parser) parseAssignmentStatement() *ast.AssignmentStatement {
-	stmt := &ast.AssignmentStatement{
-		Token: p.currentToken,
-		Name:  p.currentToken.Literal,
-	}
-
-	// Skip equals sign
-	if !p.expectPeek(token.ASSIGN) {
-		return nil
-	}
-
-	// Parse the value
-	p.nextToken()
-	stmt.Value = p.parseExpression()
-
-	// Skip optional newline
-	if p.peekToken.Type == token.NEWLINE {
-		p.nextToken()
-	}
-
-	return stmt
-}
-
-func (p *Parser) parseExpression() ast.Expression {
-	leftExp := p.parsePrimaryExpression()
-	if leftExp == nil {
-		return nil
-	}
-
-	// Look for binary operators
-	for p.peekToken.Type != token.NEWLINE &&
-		p.peekToken.Type != token.RPAREN &&
-		p.peekToken.Type != token.COMMA &&
-		p.peekToken.Type != token.COLON &&
-		p.peekToken.Type != token.ELSE {
-
-		if !isOperator(p.peekToken.Type) {
-			break
-		}
-
-		operator := p.peekToken
-		p.nextToken()
-		p.nextToken()
-		rightExp := p.parsePrimaryExpression()
-		if rightExp == nil {
-			return nil
-		}
-
-		// Convert integer literals to identifiers if they're being used in comparisons
-		if isComparisonOperator(operator.Type) {
-			if right, ok := rightExp.(*ast.IntegerLiteral); ok {
-				rightExp = &ast.Identifier{
-					Token: right.Token,
-					Value: right.Value,
-				}
-			}
-			if left, ok := leftExp.(*ast.IntegerLiteral); ok {
-				leftExp = &ast.Identifier{
-					Token: left.Token,
-					Value: left.Value,
-				}
-			}
-		}
-
-		leftExp = &ast.BinaryExpression{
-			Left:     leftExp,
-			Operator: operator.Literal,
-			Right:    rightExp,
-		}
-	}
-
-	return leftExp
-}
-
-func (p *Parser) parsePrimaryExpression() ast.Expression {
-	switch p.currentToken.Type {
-	case token.LPAREN:
-		p.nextToken() // consume the '('
-		exp := p.parseExpression()
-		if !p.expectPeek(token.RPAREN) {
-			return nil
-		}
-		return exp
-	case token.IDENT:
-		if p.peekToken.Type == token.LPAREN {
-			return p.parseFunctionCall()
-		}
-		return &ast.Identifier{
-			Token: p.currentToken,
-			Value: p.currentToken.Literal,
-		}
-	case token.INT:
-		return &ast.IntegerLiteral{
-			Token: p.currentToken,
-			Value: p.currentToken.Literal,
-		}
-	case token.STRING:
-		return &ast.StringLiteral{
-			Token: p.currentToken,
-			Value: p.currentToken.Literal,
-		}
-	case token.PRINT:
-		return p.parsePrintExpression()
-	default:
-		return nil
-	}
-}
-
-func (p *Parser) parseFunctionCall() ast.Expression {
-	tok := p.currentToken
-	name := p.currentToken.Literal
-
-	// Skip left paren
-	if !p.expectPeek(token.LPAREN) {
-		return nil
-	}
-
-	call := &ast.FunctionCall{
-		Token:    tok,
-		Function: name,
-	}
-
-	// Parse arguments
-	if p.peekToken.Type != token.RPAREN {
-		p.nextToken() // move to first argument
-		arg := p.parseExpression()
-		if arg != nil {
-			call.Arguments = append(call.Arguments, arg)
-		}
-
-		for p.peekToken.Type == token.COMMA {
-			p.nextToken() // consume comma
-			p.nextToken() // move to next argument
-			arg := p.parseExpression()
-			if arg != nil {
-				call.Arguments = append(call.Arguments, arg)
-			}
-		}
-	}
-
-	if !p.expectPeek(token.RPAREN) {
-		return nil
-	}
-
-	return call
+func (p *Parser) Errors() []string {
+	return p.errors
 }
 
 func (p *Parser) expectPeek(t token.TokenType) bool {
@@ -450,60 +561,13 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 		p.nextToken()
 		return true
 	}
-	p.addError(fmt.Sprintf("expected next token to be %s, got %s instead",
-		t, p.peekToken.Type))
 	return false
 }
 
-func (p *Parser) addError(msg string) {
-	p.errors = append(p.errors, fmt.Sprintf("line %d: %s",
-		p.currentToken.Line, msg))
+func (p *Parser) peekTokenIs(t token.TokenType) bool {
+	return p.peekToken.Type == t
 }
 
-func (p *Parser) Errors() []string {
-	return p.errors
-}
-
-func isOperator(t token.TokenType) bool {
-	return t == token.PLUS || t == token.ASTERISK ||
-		t == token.LT || t == token.GT
-}
-
-func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
-	stmt := &ast.ReturnStatement{Token: p.currentToken}
-
-	// Parse the return value
-	p.nextToken()
-	stmt.Value = p.parseExpression()
-
-	// Skip optional newline
-	if p.peekToken.Type == token.NEWLINE {
-		p.nextToken()
-	}
-
-	return stmt
-}
-
-func (p *Parser) parsePrintExpression() ast.Expression {
-	token := p.currentToken
-
-	if !p.expectPeek("(") {
-		return nil
-	}
-
-	p.nextToken()
-	exp := p.parseExpression()
-
-	if !p.expectPeek(")") {
-		return nil
-	}
-
-	return &ast.PrintStatement{
-		Token: token,
-		Value: exp,
-	}
-}
-
-func isComparisonOperator(t token.TokenType) bool {
-	return t == token.LT || t == token.GT
+func (p *Parser) currentTokenIs(t token.TokenType) bool {
+	return p.currentToken.Type == t
 }
